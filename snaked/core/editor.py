@@ -44,6 +44,7 @@ class Editor(SignalManager):
         self.lang = None
         self.contexts = []
         self.prefs = {}
+        self.file_mtime = None
 
         self.last_cursor_move = None
 
@@ -80,17 +81,9 @@ class Editor(SignalManager):
 
         self.change_title.emit(title)
 
-    def load_file(self, filename, line=None):
-        self.uri = os.path.abspath(filename)
-        self.encoding = 'utf-8'
-
-        if os.path.exists(self.uri):
-            self.view.window.freeze_updates()
-            self.on_modified_changed_handler.block()
-            self.buffer.begin_not_undoable_action()
-
-            text = open(filename).read()
-
+    def reload_file(self):
+        if self.uri:
+            text = open(self.uri).read()
             try:
                 utext = text.decode('utf-8')
             except UnicodeDecodeError, e:
@@ -110,9 +103,20 @@ class Editor(SignalManager):
                 except UnicodeDecodeError, ee:
                     self.saveable = False
                     utext = str(ee)
-
             self.buffer.set_text(utext)
             self.buffer.set_modified(False)
+            self.file_mtime = os.path.getmtime(self.uri)
+
+    def load_file(self, filename, line=None):
+        self.uri = os.path.abspath(filename)
+        self.encoding = 'utf-8'
+
+        if os.path.exists(self.uri):
+            self.view.window.freeze_updates()
+            self.on_modified_changed_handler.block()
+            self.buffer.begin_not_undoable_action()
+
+            self.reload_file()
 
             self.buffer.end_not_undoable_action()
 
@@ -283,3 +287,29 @@ class Editor(SignalManager):
                 del self.snaked_conf['MODIFIED_FILES'][self.uri]
             except KeyError:
                 pass
+
+    def check_file_modification_on_disk(self):
+        if self.uri:
+            try:
+                new_mtime = os.path.getmtime(self.uri)
+            except(OSError):
+                new_mtime = None #the file does not exist any more
+            if new_mtime is None and self.file_mtime is not None:
+                # prompt
+                self.buffer.set_modified(True)
+            if new_mtime != self.file_mtime:
+                # ask to reload
+                dialog = gtk.MessageDialog(None, gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT, gtk.MESSAGE_QUESTION, gtk.BUTTONS_YES_NO, 'The file %s changed on disk, do you want to reload the file?' % self.uri)
+                if dialog.run() == gtk.RESPONSE_YES:
+                    self.buffer.begin_user_action()
+                    self.reload_file()
+                    self.buffer.end_user_action()
+                dialog.destroy()
+                self.file_mtime = new_mtime
+
+    @connect_external('view', 'focus')
+    def on_focus(self, view, event):
+        if self.uri:
+            self.check_file_modification_on_disk()
+        return False
+
