@@ -25,6 +25,7 @@ class TabbedEditorManager(snaked.core.manager.EditorManager):
         self.window.set_name('SnakedWindow')
         self.window.set_role('Editor')
         self.window.connect('delete-event', self.on_delete_event)
+        self.window.connect('focus-in-event', self.on_focus)
 
         # set border width handling, see self.on_state_event for more details
         self.window.connect('window-state-event', self.on_state_event)
@@ -273,3 +274,9 @@ class TabbedEditorManager(snaked.core.manager.EditorManager):
     def activate_main_window(self):
         self.window.present()
         self.window.present_with_time(gtk.get_current_event_time())
+
+    def on_focus(self, widget, event):
+        editor = self.get_context()[0]
+        if editor:
+            editor.check_file_modification_on_disk()
+        return False
