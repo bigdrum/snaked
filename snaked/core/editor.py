@@ -164,6 +164,10 @@ class Editor(SignalManager):
                 if not self.buffer.get_modified():
                     self.message("%s saved" % self.uri)
                 self.buffer.set_modified(False)
+                try:
+                    self.file_mtime = os.path.getmtime(self.uri)
+                except(OSError):
+                    self.file_mtime = None #the file does not exist any more
                 self.file_saved.emit()
             except Exception, e:
                 self.message(str(e), 5000)
